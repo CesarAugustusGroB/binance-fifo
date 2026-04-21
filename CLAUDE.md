@@ -53,11 +53,13 @@ for the Spanish tax workflow. No cloud, no server, one machine.
 - `hotfix/*` — production fixes (branched from `main`, merged to both)
 
 ## Notion Board
-- **Workspace**: _pending Notion authentication_ (see Phase 4 of `/init-project`)
-- **Tasks DB**: _pending_
-- **Changelog DB**: _pending_
+- **Workspace**: https://www.notion.so/3496c88ed42481daacf6e32e287d40fb
+- **Tasks DB**: https://www.notion.so/d03596a67c3f48b6ae0b50899babd9c7
+- **Changelog DB**: https://www.notion.so/f64177768f9a41e783a11ffb4362b4de
+- **Bugs DB**: https://www.notion.so/ac40df2aa7db4b8f8abca8bdaba6e164
 
-Until Notion is connected, the seed backlog lives in `TASKS.md` at the project root.
+Task IDs use the `BF-NN` prefix. Create new tasks via `/notion` or in Notion directly; commit
+messages should reference the ID (`feat(BF-03): ...`).
 
 ## MCP Servers
 - Notion (authenticated at user level) — used for the project board once set up.
@@ -65,4 +67,3 @@ Until Notion is connected, the seed backlog lives in `TASKS.md` at the project r
 
 ## Key Documents
 - `DESIGN.md` — architecture, data model, FIFO semantics, EUR pricing, failure modes.
-- `TASKS.md` — local backlog (temporary, until Notion is connected).
