@@ -1,0 +1,16 @@
+target/
+.idea/
+.vscode/
+*.iml
+
+# Local H2 database files — contain private trade history, never commit
+data/
+*.mv.db
+*.trace.db
+
+# Local config with real API references
+src/main/resources/application-local.yml
+
+# Exported reports
+*.csv
+report-*
