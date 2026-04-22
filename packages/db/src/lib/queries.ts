@@ -105,6 +105,21 @@ export async function getCachedPrice(asset: string, quote: string, minute: Date)
   });
 }
 
+export async function getCachedPriceAtOrBefore(
+  asset: string,
+  quote: string,
+  minute: Date
+) {
+  return db.query.priceCache.findFirst({
+    where: and(
+      eq(priceCache.asset, asset),
+      eq(priceCache.quote, quote),
+      lte(priceCache.minute, minute)
+    ),
+    orderBy: desc(priceCache.minute)
+  });
+}
+
 export async function upsertCachedPrice(value: typeof priceCache.$inferInsert) {
   await db.insert(priceCache).values(value).onConflictDoUpdate({
     target: [priceCache.asset, priceCache.quote, priceCache.minute],
