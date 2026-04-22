@@ -63,9 +63,10 @@ PostgreSQL backing store, and durable background jobs.
 ## Pricing model
 
 - If the asset is `EUR`, the conversion factor is `1`.
-- Attempt direct `<asset>EUR` klines first.
-- Fall back to `<asset>USDT` and `EURUSDT` for indirect conversion.
-- Cache resolved prices per `(asset, quote, minute)` in `price_cache`.
+- Attempt direct `<asset>EUR` klines first, then fall back to `<asset>USDT` and `EURUSDT`.
+- If the exact minute is unavailable, reuse the nearest earlier cached or Binance 1m kline.
+- Cache resolved prices per `(asset, quote, minute)` in `price_cache`, and dedupe in-flight lookups during replay flows.
+- Missing markets and unsupported assets raise explicit resolver errors instead of silently falling through.
 - Keep all timestamps in UTC until export.
 
 ## Current scope

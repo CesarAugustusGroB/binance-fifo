@@ -120,6 +120,32 @@ export class BinanceClient {
     return result[0][4];
   }
 
+  async fetchNearestKline(
+    symbol: string,
+    openTimeMs: number
+  ): Promise<{ openTimeMs: number; close: string }> {
+    const result = await this.publicRequest({
+      path: "/api/v3/klines",
+      params: {
+        symbol,
+        interval: "1m",
+        limit: 1,
+        endTime: openTimeMs + 60_000
+      },
+      schema: klineSchema.array()
+    });
+
+    const nearest = result[0];
+    if (!nearest || nearest[0] > openTimeMs) {
+      throw new Error(`No kline found for ${symbol} at or before ${openTimeMs}`);
+    }
+
+    return {
+      openTimeMs: nearest[0],
+      close: nearest[4]
+    };
+  }
+
   private async signedRequest<T>({
     path,
     params = {},
