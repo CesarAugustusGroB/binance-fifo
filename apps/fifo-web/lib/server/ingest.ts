@@ -1,16 +1,75 @@
 import { and, eq } from "drizzle-orm";
 
 import { BinanceClient } from "@binance-fifo/binance-client";
-import { db, ingestionCursor, upsertKnownSymbols, trades } from "@binance-fifo/db";
+import {
+  db,
+  deactivateKnownSymbols,
+  ingestionCursor,
+  listKnownSymbols,
+  upsertKnownSymbols,
+  trades
+} from "@binance-fifo/db";
 import { readBinanceEnv } from "@binance-fifo/shared";
 
-import { discoverTradedSymbols } from "./discover-symbols";
+import {
+  createRediscoveryPlan,
+  discoverBalanceSymbols,
+  reuseKnownSymbols,
+  type KnownSymbolCandidate
+} from "./discover-symbols";
 import { mapSpotTradeDto } from "./mappers";
 
 export interface IngestRequest {
   fromMs?: number;
   toMs?: number;
   rediscover?: boolean;
+}
+
+async function symbolHasTradeHistory(
+  client: Pick<BinanceClient, "myTrades">,
+  symbol: string
+) {
+  const iterator = client.myTrades(symbol);
+  const firstPage = await iterator.next();
+  return !firstPage.done && firstPage.value.length > 0;
+}
+
+async function resolveSymbolsForIngest(
+  client: Pick<BinanceClient, "account" | "exchangeInfo" | "myTrades">,
+  rediscover = false
+) {
+  const knownSymbols = await listKnownSymbols({ activeOnly: false });
+  const exchangeInfo = await client.exchangeInfo();
+
+  if (!rediscover) {
+    const reusableSymbols = reuseKnownSymbols(knownSymbols, exchangeInfo);
+    if (reusableSymbols.length > 0) {
+      return {
+        symbols: reusableSymbols,
+        inactiveSymbols: [] as string[]
+      };
+    }
+
+    const account = await client.account();
+    return {
+      symbols: discoverBalanceSymbols(account, exchangeInfo),
+      inactiveSymbols: [] as string[]
+    };
+  }
+
+  const plan = createRediscoveryPlan(knownSymbols, exchangeInfo);
+  const discoveredSymbols: KnownSymbolCandidate[] = [];
+
+  for (const symbol of plan.probeSymbols) {
+    if (await symbolHasTradeHistory(client, symbol.symbol)) {
+      discoveredSymbols.push(symbol);
+    }
+  }
+
+  return {
+    symbols: [...plan.reusableSymbols, ...discoveredSymbols],
+    inactiveSymbols: plan.inactiveSymbols
+  };
 }
 
 export async function ingestSpotTrades(input: IngestRequest = {}) {
@@ -20,7 +79,10 @@ export async function ingestSpotTrades(input: IngestRequest = {}) {
     secret: env.BINANCE_API_SECRET
   });
 
-  const symbols = await discoverTradedSymbols(client);
+  const { symbols, inactiveSymbols } = await resolveSymbolsForIngest(
+    client,
+    input.rediscover ?? false
+  );
   await upsertKnownSymbols(
     symbols.map((symbol) => ({
       symbol: symbol.symbol,
@@ -30,6 +92,7 @@ export async function ingestSpotTrades(input: IngestRequest = {}) {
       isActive: true
     }))
   );
+  await deactivateKnownSymbols(inactiveSymbols);
 
   for (const symbol of symbols) {
     const existingCursor = await db.query.ingestionCursor.findFirst({
