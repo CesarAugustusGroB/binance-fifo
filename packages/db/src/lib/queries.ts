@@ -61,6 +61,11 @@ export async function listKnownSymbols(options?: { activeOnly?: boolean }) {
   return query.where(eq(knownSymbols.isActive, true));
 }
 
+export async function listTradedSymbols() {
+  const rows = await db.selectDistinct({ symbol: trades.symbol }).from(trades);
+  return rows.map((row) => row.symbol);
+}
+
 export async function upsertKnownSymbols(values: typeof knownSymbols.$inferInsert[]) {
   if (values.length === 0) {
     return;

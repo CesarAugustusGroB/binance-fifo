@@ -5,8 +5,6 @@ import type {
 } from "@binance-fifo/binance-client";
 import { decimal } from "@binance-fifo/shared";
 
-const QUOTES = ["USDT", "BUSD", "EUR", "BTC", "ETH"] as const;
-
 export interface KnownSymbolCandidate {
   symbol: string;
   baseAsset: string;
@@ -20,6 +18,7 @@ export interface StoredKnownSymbol extends KnownSymbolCandidate {
 export interface RediscoveryPlan {
   reusableSymbols: KnownSymbolCandidate[];
   probeSymbols: KnownSymbolCandidate[];
+  probeKnownSymbols: string[];
   inactiveSymbols: string[];
 }
 
@@ -39,13 +38,8 @@ export function buildExchangeMetadataIndex(exchangeInfo: ExchangeInfoDto) {
   );
 }
 
-export function discoverBalanceSymbols(
-  account: AccountDto,
-  exchangeInfo: ExchangeInfoDto
-): KnownSymbolCandidate[] {
-  const validSymbols = buildExchangeMetadataIndex(exchangeInfo);
-  const seen = new Set<string>();
-  const results: KnownSymbolCandidate[] = [];
+export function collectNonZeroAssets(account: AccountDto) {
+  const assets = new Set<string>();
 
   for (const balance of account.balances) {
     const total = decimal(balance.free).plus(decimal(balance.locked));
@@ -53,23 +47,47 @@ export function discoverBalanceSymbols(
       continue;
     }
 
-    for (const quote of QUOTES) {
-      if (balance.asset === quote) {
-        continue;
-      }
-
-      const symbol = `${balance.asset}${quote}`;
-      const metadata = validSymbols.get(symbol);
-      if (!metadata || seen.has(symbol)) {
-        continue;
-      }
-
-      seen.add(symbol);
-      results.push(metadata);
-    }
+    assets.add(balance.asset);
   }
 
-  return results;
+  return assets;
+}
+
+export function collectRelevantAssets(
+  account: AccountDto,
+  knownSymbols: StoredKnownSymbol[]
+) {
+  const assets = collectNonZeroAssets(account);
+
+  for (const symbol of knownSymbols) {
+    assets.add(symbol.baseAsset);
+    assets.add(symbol.quoteAsset);
+  }
+
+  return assets;
+}
+
+export function buildMetadataCandidates(
+  exchangeInfo: ExchangeInfoDto,
+  relevantAssets: Iterable<string>
+): KnownSymbolCandidate[] {
+  const assetSet = new Set(relevantAssets);
+  const validSymbols = buildExchangeMetadataIndex(exchangeInfo);
+
+  if (assetSet.size === 0) {
+    return [];
+  }
+
+  return [...validSymbols.values()].filter(
+    (symbol) => assetSet.has(symbol.baseAsset) || assetSet.has(symbol.quoteAsset)
+  );
+}
+
+export function discoverBalanceSymbols(
+  account: AccountDto,
+  exchangeInfo: ExchangeInfoDto
+): KnownSymbolCandidate[] {
+  return buildMetadataCandidates(exchangeInfo, collectNonZeroAssets(account));
 }
 
 export function reuseKnownSymbols(
@@ -86,22 +104,30 @@ export function reuseKnownSymbols(
 
 export function createRediscoveryPlan(
   knownSymbols: StoredKnownSymbol[],
-  exchangeInfo: ExchangeInfoDto
+  exchangeInfo: ExchangeInfoDto,
+  relevantAssets: Iterable<string>,
+  confirmedSymbols: Iterable<string>
 ): RediscoveryPlan {
   const validSymbols = buildExchangeMetadataIndex(exchangeInfo);
+  const metadataCandidates = buildMetadataCandidates(exchangeInfo, relevantAssets);
   const knownBySymbol = new Map(knownSymbols.map((symbol) => [symbol.symbol, symbol]));
+  const confirmedSymbolSet = new Set(confirmedSymbols);
 
   const reusableSymbols: KnownSymbolCandidate[] = [];
   const probeSymbols: KnownSymbolCandidate[] = [];
+  const probeKnownSymbols: string[] = [];
 
-  for (const symbol of validSymbols.values()) {
+  for (const symbol of metadataCandidates) {
     const existing = knownBySymbol.get(symbol.symbol);
-    if (existing?.isActive) {
+    if (existing?.isActive && confirmedSymbolSet.has(symbol.symbol)) {
       reusableSymbols.push(symbol);
       continue;
     }
 
     probeSymbols.push(symbol);
+    if (existing) {
+      probeKnownSymbols.push(symbol.symbol);
+    }
   }
 
   const inactiveSymbols = knownSymbols
@@ -111,6 +137,7 @@ export function createRediscoveryPlan(
   return {
     reusableSymbols,
     probeSymbols,
+    probeKnownSymbols,
     inactiveSymbols
   };
 }

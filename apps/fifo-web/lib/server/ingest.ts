@@ -6,12 +6,15 @@ import {
   deactivateKnownSymbols,
   ingestionCursor,
   listKnownSymbols,
+  listTradedSymbols,
   upsertKnownSymbols,
   trades
 } from "@binance-fifo/db";
 import { readBinanceEnv } from "@binance-fifo/shared";
 
 import {
+  buildExchangeMetadataIndex,
+  collectRelevantAssets,
   createRediscoveryPlan,
   discoverBalanceSymbols,
   reuseKnownSymbols,
@@ -34,42 +37,55 @@ async function symbolHasTradeHistory(
   return !firstPage.done && firstPage.value.length > 0;
 }
 
+interface ResolvedSymbolsForIngest {
+  reusableSymbols: KnownSymbolCandidate[];
+  probeSymbols: KnownSymbolCandidate[];
+  probeKnownSymbols: string[];
+  inactiveSymbols: string[];
+}
+
 async function resolveSymbolsForIngest(
   client: Pick<BinanceClient, "account" | "exchangeInfo" | "myTrades">,
   rediscover = false
-) {
+): Promise<ResolvedSymbolsForIngest> {
   const knownSymbols = await listKnownSymbols({ activeOnly: false });
   const exchangeInfo = await client.exchangeInfo();
+  const exchangeMetadata = buildExchangeMetadataIndex(exchangeInfo);
+  const inactiveMetadataSymbols = knownSymbols
+    .filter((symbol) => symbol.isActive && !exchangeMetadata.has(symbol.symbol))
+    .map((symbol) => symbol.symbol);
 
   if (!rediscover) {
     const reusableSymbols = reuseKnownSymbols(knownSymbols, exchangeInfo);
+
     if (reusableSymbols.length > 0) {
       return {
-        symbols: reusableSymbols,
-        inactiveSymbols: [] as string[]
+        reusableSymbols,
+        probeSymbols: [],
+        probeKnownSymbols: [],
+        inactiveSymbols: inactiveMetadataSymbols
       };
     }
 
     const account = await client.account();
     return {
-      symbols: discoverBalanceSymbols(account, exchangeInfo),
-      inactiveSymbols: [] as string[]
+      reusableSymbols: [],
+      probeSymbols: discoverBalanceSymbols(account, exchangeInfo),
+      probeKnownSymbols: [],
+      inactiveSymbols: inactiveMetadataSymbols
     };
   }
 
-  const plan = createRediscoveryPlan(knownSymbols, exchangeInfo);
-  const discoveredSymbols: KnownSymbolCandidate[] = [];
+  const account = await client.account();
+  const tradedSymbols = await listTradedSymbols();
+  const relevantAssets = collectRelevantAssets(account, knownSymbols);
 
-  for (const symbol of plan.probeSymbols) {
-    if (await symbolHasTradeHistory(client, symbol.symbol)) {
-      discoveredSymbols.push(symbol);
-    }
-  }
-
-  return {
-    symbols: [...plan.reusableSymbols, ...discoveredSymbols],
-    inactiveSymbols: plan.inactiveSymbols
-  };
+  return createRediscoveryPlan(
+    knownSymbols,
+    exchangeInfo,
+    relevantAssets,
+    tradedSymbols
+  );
 }
 
 export async function ingestSpotTrades(input: IngestRequest = {}) {
@@ -79,12 +95,26 @@ export async function ingestSpotTrades(input: IngestRequest = {}) {
     secret: env.BINANCE_API_SECRET
   });
 
-  const { symbols, inactiveSymbols } = await resolveSymbolsForIngest(
+  const { reusableSymbols, probeSymbols, probeKnownSymbols, inactiveSymbols } = await resolveSymbolsForIngest(
     client,
     input.rediscover ?? false
   );
+  const confirmedSymbols = [...reusableSymbols];
+  const knownSymbolsToDeactivate = new Set(inactiveSymbols);
+
+  for (const symbol of probeSymbols) {
+    if (await symbolHasTradeHistory(client, symbol.symbol)) {
+      confirmedSymbols.push(symbol);
+      continue;
+    }
+
+    if (probeKnownSymbols.includes(symbol.symbol)) {
+      knownSymbolsToDeactivate.add(symbol.symbol);
+    }
+  }
+
   await upsertKnownSymbols(
-    symbols.map((symbol) => ({
+    confirmedSymbols.map((symbol) => ({
       symbol: symbol.symbol,
       baseAsset: symbol.baseAsset,
       quoteAsset: symbol.quoteAsset,
@@ -92,9 +122,9 @@ export async function ingestSpotTrades(input: IngestRequest = {}) {
       isActive: true
     }))
   );
-  await deactivateKnownSymbols(inactiveSymbols);
+  await deactivateKnownSymbols([...knownSymbolsToDeactivate]);
 
-  for (const symbol of symbols) {
+  for (const symbol of confirmedSymbols) {
     const existingCursor = await db.query.ingestionCursor.findFirst({
       where: and(eq(ingestionCursor.source, "SPOT"), eq(ingestionCursor.symbol, symbol.symbol))
     });
@@ -145,5 +175,5 @@ export async function ingestSpotTrades(input: IngestRequest = {}) {
     }
   }
 
-  return { symbols: symbols.length };
+  return { symbols: confirmedSymbols.length };
 }

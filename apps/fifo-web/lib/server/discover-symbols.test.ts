@@ -1,53 +1,55 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMetadataCandidates,
   buildExchangeMetadataIndex,
+  collectRelevantAssets,
   createRediscoveryPlan,
+  collectNonZeroAssets,
   discoverBalanceSymbols,
   reuseKnownSymbols,
   type StoredKnownSymbol
 } from "./discover-symbols";
 
 describe("discover-symbols", () => {
-  it("validates balance-derived candidates against exchange metadata", () => {
+  it("builds bootstrap candidates from metadata instead of a fixed quote list", () => {
     const result = discoverBalanceSymbols(
       {
         balances: [
-          { asset: "BTC", free: "0.5", locked: "0" },
-          { asset: "ETH", free: "0", locked: "0" },
-          { asset: "ADA", free: "10", locked: "0" }
+          { asset: "FDUSD", free: "100", locked: "0" },
+          { asset: "ETH", free: "0", locked: "0" }
         ]
       },
       {
         symbols: [
           {
-            symbol: "BTCEUR",
+            symbol: "BTCFDUSD",
             status: "TRADING",
             baseAsset: "BTC",
-            quoteAsset: "EUR",
+            quoteAsset: "FDUSD",
             isSpotTradingAllowed: true
           },
           {
-            symbol: "ADABTC",
+            symbol: "ETHFDUSD",
             status: "TRADING",
-            baseAsset: "ADA",
-            quoteAsset: "BTC",
+            baseAsset: "ETH",
+            quoteAsset: "FDUSD",
             isSpotTradingAllowed: true
           },
           {
-            symbol: "ADAUSDT",
+            symbol: "BTCUSDT",
             status: "TRADING",
-            baseAsset: "ADA",
+            baseAsset: "BTC",
             quoteAsset: "USDT",
-            isSpotTradingAllowed: false
+            isSpotTradingAllowed: true
           }
         ]
       }
     );
 
     expect(result).toEqual([
-      { symbol: "BTCEUR", baseAsset: "BTC", quoteAsset: "EUR" },
-      { symbol: "ADABTC", baseAsset: "ADA", quoteAsset: "BTC" }
+      { symbol: "BTCFDUSD", baseAsset: "BTC", quoteAsset: "FDUSD" },
+      { symbol: "ETHFDUSD", baseAsset: "ETH", quoteAsset: "FDUSD" }
     ]);
   });
 
@@ -95,7 +97,7 @@ describe("discover-symbols", () => {
     expect(result).toEqual([{ symbol: "BTCEUR", baseAsset: "BTC", quoteAsset: "EUR" }]);
   });
 
-  it("builds a rediscovery plan that reuses active rows, probes the rest, and deactivates stale rows", () => {
+  it("builds a rediscovery plan that narrows probes to relevant assets and reprobes unconfirmed rows", () => {
     const knownSymbols: StoredKnownSymbol[] = [
       {
         symbol: "BTCEUR",
@@ -139,18 +141,102 @@ describe("discover-symbols", () => {
           baseAsset: "XRP",
           quoteAsset: "USDT",
           isSpotTradingAllowed: true
+        },
+        {
+          symbol: "SOLBTC",
+          status: "TRADING",
+          baseAsset: "SOL",
+          quoteAsset: "BTC",
+          isSpotTradingAllowed: true
+        },
+        {
+          symbol: "DOGEUSDT",
+          status: "TRADING",
+          baseAsset: "DOGE",
+          quoteAsset: "USDT",
+          isSpotTradingAllowed: true
         }
       ]
-    });
+    },
+    new Set(["BTC", "EUR", "XRP"]),
+    new Set(["BTCEUR"])
+    );
 
     expect(result).toEqual({
       reusableSymbols: [{ symbol: "BTCEUR", baseAsset: "BTC", quoteAsset: "EUR" }],
       probeSymbols: [
         { symbol: "ADABTC", baseAsset: "ADA", quoteAsset: "BTC" },
-        { symbol: "XRPUSDT", baseAsset: "XRP", quoteAsset: "USDT" }
+        { symbol: "XRPUSDT", baseAsset: "XRP", quoteAsset: "USDT" },
+        { symbol: "SOLBTC", baseAsset: "SOL", quoteAsset: "BTC" }
       ],
+      probeKnownSymbols: ["ADABTC"],
       inactiveSymbols: ["STALEPAIR"]
     });
+  });
+
+  it("collects relevant rediscovery assets from balances and known symbols", () => {
+    const result = collectRelevantAssets(
+      {
+        balances: [
+          { asset: "USDT", free: "50", locked: "0" },
+          { asset: "BTC", free: "0", locked: "0" }
+        ]
+      },
+      [
+        { symbol: "BTCEUR", baseAsset: "BTC", quoteAsset: "EUR", isActive: true },
+        { symbol: "ADABTC", baseAsset: "ADA", quoteAsset: "BTC", isActive: false }
+      ]
+    );
+
+    expect([...result]).toEqual(["USDT", "BTC", "EUR", "ADA"]);
+  });
+
+  it("collects only non-zero balance assets", () => {
+    const result = collectNonZeroAssets({
+      balances: [
+        { asset: "BTC", free: "0", locked: "0" },
+        { asset: "EUR", free: "5", locked: "0" },
+        { asset: "USDT", free: "0", locked: "1" }
+      ]
+    });
+
+    expect([...result]).toEqual(["EUR", "USDT"]);
+  });
+
+  it("builds metadata candidates from relevant assets only", () => {
+    const result = buildMetadataCandidates(
+      {
+        symbols: [
+          {
+            symbol: "BTCEUR",
+            status: "TRADING",
+            baseAsset: "BTC",
+            quoteAsset: "EUR",
+            isSpotTradingAllowed: true
+          },
+          {
+            symbol: "ETHUSDT",
+            status: "TRADING",
+            baseAsset: "ETH",
+            quoteAsset: "USDT",
+            isSpotTradingAllowed: true
+          },
+          {
+            symbol: "SOLBTC",
+            status: "TRADING",
+            baseAsset: "SOL",
+            quoteAsset: "BTC",
+            isSpotTradingAllowed: true
+          }
+        ]
+      },
+      new Set(["BTC", "EUR"])
+    );
+
+    expect(result).toEqual([
+      { symbol: "BTCEUR", baseAsset: "BTC", quoteAsset: "EUR" },
+      { symbol: "SOLBTC", baseAsset: "SOL", quoteAsset: "BTC" }
+    ]);
   });
 
   it("indexes only spot-allowed exchange symbols", () => {
