@@ -1,7 +1,0 @@
-# Copy to application-local.yml (which is gitignored) and fill in.
-# In practice, prefer exporting env vars so no secret ever lives on disk:
-#   export BINANCE_API_KEY=...
-#   export BINANCE_API_SECRET=...
-binance:
-  api-key: REPLACE_ME_OR_USE_ENV
-  api-secret: REPLACE_ME_OR_USE_ENV

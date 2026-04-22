@@ -1,0 +1,20 @@
+{
+  "name": "binance-fifo",
+  "private": true,
+  "packageManager": "pnpm@10.8.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "corepack pnpm -r build",
+    "dev": "corepack pnpm --filter fifo-web dev",
+    "lint": "corepack pnpm -r lint",
+    "test": "corepack pnpm -r test",
+    "typecheck": "corepack pnpm -r typecheck",
+    "db:generate": "corepack pnpm --filter @binance-fifo/db db:generate",
+    "db:migrate": "corepack pnpm --filter @binance-fifo/db db:migrate",
+    "fifo:ingest": "corepack pnpm --filter fifo-web fifo:ingest",
+    "fifo:recompute": "corepack pnpm --filter fifo-web fifo:recompute",
+    "fifo:status": "corepack pnpm --filter fifo-web fifo:status"
+  }
+}

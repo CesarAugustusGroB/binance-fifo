@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "verbatimModuleSyntax": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@binance-fifo/shared": ["packages/shared/src/index.ts"],
+      "@binance-fifo/binance-client": ["packages/binance-client/src/index.ts"],
+      "@binance-fifo/fifo-engine": ["packages/fifo-engine/src/index.ts"],
+      "@binance-fifo/db": ["packages/db/src/index.ts"]
+    }
+  }
+}

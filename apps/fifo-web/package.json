@@ -1,0 +1,36 @@
+{
+  "name": "fifo-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "fifo:ingest": "tsx scripts/ingest.ts",
+    "fifo:recompute": "tsx scripts/recompute.ts",
+    "fifo:status": "tsx scripts/status.ts"
+  },
+  "dependencies": {
+    "@binance-fifo/binance-client": "workspace:*",
+    "@binance-fifo/db": "workspace:*",
+    "@binance-fifo/fifo-engine": "workspace:*",
+    "@binance-fifo/shared": "workspace:*",
+    "drizzle-orm": "^0.44.2",
+    "inngest": "^3.32.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.19.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

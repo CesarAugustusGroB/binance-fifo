@@ -1,16 +1,21 @@
-target/
 .idea/
+.next/
+.turbo/
 .vscode/
+coverage/
+dist/
+node_modules/
+out/
+tmp/
 *.iml
+*.log
 
-# Local H2 database files — contain private trade history, never commit
+# Local secrets and generated env files
+.env
+.env.local
+.env.*.local
+
+# Local database/output artifacts
 data/
-*.mv.db
-*.trace.db
-
-# Local config with real API references
-src/main/resources/application-local.yml
-
-# Exported reports
 *.csv
 report-*
