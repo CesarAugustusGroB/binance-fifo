@@ -30,6 +30,20 @@ export const accountDtoSchema = z.object({
   balances: z.array(accountAssetSchema)
 });
 
+export const exchangeSymbolSchema = z
+  .object({
+    symbol: z.string(),
+    status: z.string(),
+    baseAsset: z.string(),
+    quoteAsset: z.string(),
+    isSpotTradingAllowed: z.boolean().optional()
+  })
+  .passthrough();
+
+export const exchangeInfoSchema = z.object({
+  symbols: z.array(exchangeSymbolSchema)
+});
+
 export const depositDtoSchema = z
   .object({
     id: z.string(),
@@ -65,5 +79,7 @@ export const klineSchema = z.tuple([
 
 export type TradeDto = z.infer<typeof tradeDtoSchema>;
 export type AccountDto = z.infer<typeof accountDtoSchema>;
+export type ExchangeSymbolDto = z.infer<typeof exchangeSymbolSchema>;
+export type ExchangeInfoDto = z.infer<typeof exchangeInfoSchema>;
 export type DepositDto = z.infer<typeof depositDtoSchema>;
 export type WithdrawalDto = z.infer<typeof withdrawalDtoSchema>;

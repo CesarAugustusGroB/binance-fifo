@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { db } from "./client";
 import {
@@ -50,8 +50,15 @@ export async function readStatus() {
   };
 }
 
-export async function listKnownSymbols() {
-  return db.select().from(knownSymbols).where(eq(knownSymbols.isActive, true));
+export async function listKnownSymbols(options?: { activeOnly?: boolean }) {
+  const activeOnly = options?.activeOnly ?? true;
+
+  const query = db.select().from(knownSymbols);
+  if (!activeOnly) {
+    return query;
+  }
+
+  return query.where(eq(knownSymbols.isActive, true));
 }
 
 export async function upsertKnownSymbols(values: typeof knownSymbols.$inferInsert[]) {
@@ -65,11 +72,22 @@ export async function upsertKnownSymbols(values: typeof knownSymbols.$inferInser
     .onConflictDoUpdate({
       target: knownSymbols.symbol,
       set: {
-        baseAsset: knownSymbols.baseAsset,
-        quoteAsset: knownSymbols.quoteAsset,
-        isActive: knownSymbols.isActive
+        baseAsset: sql`excluded.base_asset`,
+        quoteAsset: sql`excluded.quote_asset`,
+        isActive: sql`excluded.is_active`
       }
     });
+}
+
+export async function deactivateKnownSymbols(symbols: string[]) {
+  if (symbols.length === 0) {
+    return;
+  }
+
+  await db
+    .update(knownSymbols)
+    .set({ isActive: false })
+    .where(inArray(knownSymbols.symbol, symbols));
 }
 
 export async function getCachedPrice(asset: string, quote: string, minute: Date) {

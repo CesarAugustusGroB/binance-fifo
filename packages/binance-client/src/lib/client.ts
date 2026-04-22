@@ -6,11 +6,13 @@ import { BinanceError } from "./errors";
 import {
   accountDtoSchema,
   depositDtoSchema,
+  exchangeInfoSchema,
   klineSchema,
   tradeDtoSchema,
   withdrawalDtoSchema,
   type AccountDto,
   type DepositDto,
+  type ExchangeInfoDto,
   type TradeDto,
   type WithdrawalDto
 } from "./schemas";
@@ -39,6 +41,13 @@ export class BinanceClient {
     return this.signedRequest({
       path: "/api/v3/account",
       schema: accountDtoSchema
+    });
+  }
+
+  async exchangeInfo(): Promise<ExchangeInfoDto> {
+    return this.publicRequest({
+      path: "/api/v3/exchangeInfo",
+      schema: exchangeInfoSchema
     });
   }
 
