@@ -1,5 +1,11 @@
 import { BinanceClient } from "@binance-fifo/binance-client";
-import { loadTradesAndMovements, replaceRealizedGains } from "@binance-fifo/db";
+import {
+  loadTradesAndMovements,
+  prunePriceCache,
+  replaceOpenLotsSnapshot,
+  replaceRealizedGains,
+  replaceUncoveredSnapshot
+} from "@binance-fifo/db";
 import {
   FifoEngine,
   mapTradesAndMovementsToAssetEvents,
@@ -51,6 +57,7 @@ function toMovementDomain(
 }
 
 export async function recomputeRealizedGains() {
+  const startedAt = Date.now();
   const env = readBinanceEnv();
   const client = new BinanceClient({
     apiKey: env.BINANCE_API_KEY,
@@ -70,6 +77,8 @@ export async function recomputeRealizedGains() {
   const engine = new FifoEngine();
   engine.apply(events);
 
+  const snapshotAt = new Date();
+
   await replaceRealizedGains(
     engine.gains.map((gain) => ({
       asset: gain.asset,
@@ -84,14 +93,52 @@ export async function recomputeRealizedGains() {
     }))
   );
 
-  return {
-    gains: engine.gains.length,
-    uncovered: engine.uncovered.map((entry) => ({
+  const openLotRows: Array<{
+    asset: string;
+    sourceId: string;
+    qty: string;
+    costPerUnitEur: string;
+    acquiredAt: Date;
+    snapshotAt: Date;
+  }> = [];
+  for (const [asset, lots] of engine.openLots()) {
+    for (const lot of lots) {
+      openLotRows.push({
+        asset,
+        sourceId: lot.sourceId,
+        qty: lot.qty.toFixed(),
+        costPerUnitEur: lot.costPerUnit.toFixed(),
+        acquiredAt: lot.at,
+        snapshotAt
+      });
+    }
+  }
+  await replaceOpenLotsSnapshot(openLotRows);
+
+  await replaceUncoveredSnapshot(
+    engine.uncovered.map((entry) => ({
       asset: entry.event.asset,
-      remainingQty: entry.remainingQty.toFixed(),
-      sourceId: entry.event.sourceId
+      qty: entry.remainingQty.toFixed(),
+      valueEur: entry.event.valueEur.toFixed(),
+      occurredAt: entry.event.at,
+      sourceId: entry.event.sourceId,
+      reason: "unmatched",
+      snapshotAt
     }))
+  );
+
+  const durationMs = Date.now() - startedAt;
+  const summary = {
+    ingestedTrades: tradeRows.length,
+    ingestedMovements: movementRows.length,
+    gains: engine.gains.length,
+    openLots: openLotRows.length,
+    uncovered: engine.uncovered.length,
+    durationMs
   };
+  console.info("[recompute] completed", summary);
+
+  return summary;
 }
 
 export async function warmPriceCache() {
@@ -116,9 +163,16 @@ export async function warmPriceCache() {
       continue;
     }
     for (const timestamp of timestamps) {
-      await resolver.toEur(asset, timestamp);
+      try {
+        await resolver.toEur(asset, timestamp);
+      } catch {
+        // best-effort warming — skip unresolvable combinations
+      }
     }
   }
+
+  const cutoff = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+  await prunePriceCache(cutoff);
 
   return true;
 }

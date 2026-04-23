@@ -9,9 +9,9 @@ export const ingestTrades = inngest.createFunction(
       ingestSpotTrades(event.data)
     );
 
-    await step.sendEvent("trigger-recompute", {
-      name: "fifo/recompute.requested",
-      data: {}
+    await step.sendEvent("trigger-movements", {
+      name: "fifo/movements.requested",
+      data: event.data ?? {}
     });
 
     return result;

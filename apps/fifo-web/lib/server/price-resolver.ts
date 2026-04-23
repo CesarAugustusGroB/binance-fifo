@@ -3,6 +3,21 @@ import { getCachedPrice, upsertCachedPrice } from "@binance-fifo/db";
 import { Decimal, decimal, truncateToMinute } from "@binance-fifo/shared";
 import type { PriceResolver } from "@binance-fifo/fifo-engine";
 
+export class PriceResolutionError extends Error {
+  constructor(
+    readonly asset: string,
+    readonly at: Date,
+    readonly attempts: string[]
+  ) {
+    super(`Could not resolve EUR price for ${asset} at ${at.toISOString()} (tried: ${attempts.join(", ")})`);
+    this.name = "PriceResolutionError";
+  }
+}
+
+export function isPriceResolutionError(err: unknown): err is PriceResolutionError {
+  return err instanceof PriceResolutionError;
+}
+
 export class BinancePriceResolver implements PriceResolver {
   constructor(private readonly client: Pick<BinanceClient, "fetchKline">) {}
 
@@ -17,7 +32,9 @@ export class BinancePriceResolver implements PriceResolver {
       return decimal(direct.price);
     }
 
+    const attempts: string[] = [];
     const directPrice = await this.tryFetchAndStore(asset, "EUR", `${asset}EUR`, minute);
+    attempts.push(`${asset}EUR`);
     if (directPrice) {
       return directPrice;
     }
@@ -25,8 +42,15 @@ export class BinancePriceResolver implements PriceResolver {
     const assetUsdt =
       asset === "USDT"
         ? decimal(1)
-        : await this.fetchAndStore(asset, "USDT", `${asset}USDT`, minute);
-    const eurUsdt = await this.fetchAndStore("EUR", "USDT", "EURUSDT", minute);
+        : await this.tryFetchAndStore(asset, "USDT", `${asset}USDT`, minute);
+    attempts.push(`${asset}USDT`);
+
+    const eurUsdt = await this.tryFetchAndStore("EUR", "USDT", "EURUSDT", minute);
+    attempts.push("EURUSDT");
+
+    if (!assetUsdt || !eurUsdt || eurUsdt.eq(0)) {
+      throw new PriceResolutionError(asset, at, attempts);
+    }
 
     const price = assetUsdt.div(eurUsdt);
     await upsertCachedPrice({

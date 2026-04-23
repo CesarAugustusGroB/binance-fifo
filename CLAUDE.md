@@ -27,6 +27,10 @@ TypeScript monorepo for Binance FIFO tax processing.
 - `packages/db/`
 - `packages/shared/`
 
+## Notion Board
+- **Tasks DB**: https://www.notion.so/d03596a67c3f48b6ae0b50899babd9c7
+- **Project page**: https://www.notion.so/3496c88ed42481daacf6e32e287d40fb
+
 ## Rules
 - Money and quantities use `decimal.js`, never JS `number`.
 - Binance creds and internal bearer token come from env vars only.

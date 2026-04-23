@@ -1,13 +1,15 @@
-import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lt, lte, max, sql } from "drizzle-orm";
 
 import { db } from "./client";
 import {
   ingestionCursor,
   knownSymbols,
   movements,
+  openLots,
   priceCache,
   realizedGains,
-  trades
+  trades,
+  uncoveredDisposals
 } from "./schema";
 
 export async function loadTradesAndMovements() {
@@ -112,4 +114,75 @@ export async function upsertCachedPrice(value: typeof priceCache.$inferInsert) {
       price: value.price
     }
   });
+}
+
+export async function replaceOpenLotsSnapshot(
+  rows: typeof openLots.$inferInsert[]
+) {
+  await db.delete(openLots);
+  if (rows.length > 0) {
+    await db.insert(openLots).values(rows);
+  }
+}
+
+export async function replaceUncoveredSnapshot(
+  rows: Omit<typeof uncoveredDisposals.$inferInsert, "id">[]
+) {
+  await db.delete(uncoveredDisposals);
+  if (rows.length > 0) {
+    await db.insert(uncoveredDisposals).values(rows);
+  }
+}
+
+export async function listOpenLots() {
+  return db.select().from(openLots).orderBy(openLots.asset, openLots.acquiredAt);
+}
+
+export async function listUncoveredDisposals() {
+  return db
+    .select()
+    .from(uncoveredDisposals)
+    .orderBy(desc(uncoveredDisposals.occurredAt));
+}
+
+export async function listRecentRealizedGains(limit = 50) {
+  return db
+    .select()
+    .from(realizedGains)
+    .orderBy(desc(realizedGains.disposalDate), desc(realizedGains.id))
+    .limit(limit);
+}
+
+export async function readLastRecomputeAt() {
+  const row = await db.select({ value: max(openLots.snapshotAt) }).from(openLots);
+  return row[0]?.value ?? null;
+}
+
+export async function countUncovered() {
+  const row = await db.select({ value: count() }).from(uncoveredDisposals);
+  return row[0]?.value ?? 0;
+}
+
+export async function prunePriceCache(olderThan: Date) {
+  await db.delete(priceCache).where(lt(priceCache.minute, olderThan));
+}
+
+export async function readRealizedTotals(yearStart: Date, yearEnd: Date) {
+  const rows = await db
+    .select({
+      asset: realizedGains.asset,
+      proceeds: sql<string>`sum(${realizedGains.disposalValueEur})`.as("proceeds"),
+      cost: sql<string>`sum(${realizedGains.acquisitionCostEur})`.as("cost"),
+      pnl: sql<string>`sum(${realizedGains.pnlEur})`.as("pnl"),
+      disposals: sql<string>`count(distinct ${realizedGains.sellSourceId})`.as("disposals")
+    })
+    .from(realizedGains)
+    .where(
+      and(
+        gte(realizedGains.disposalDate, yearStart),
+        lte(realizedGains.disposalDate, yearEnd)
+      )
+    )
+    .groupBy(realizedGains.asset);
+  return rows;
 }

@@ -103,6 +103,40 @@ export const ingestionCursor = pgTable(
   })
 );
 
+export const openLots = pgTable(
+  "open_lots",
+  {
+    asset: text("asset").notNull(),
+    sourceId: text("source_id").notNull(),
+    qty: numeric("qty", { precision: 30, scale: 10 }).notNull(),
+    costPerUnitEur: numeric("cost_per_unit_eur", { precision: 30, scale: 10 }).notNull(),
+    acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull(),
+    snapshotAt: timestamp("snapshot_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.asset, table.sourceId] }),
+    assetIdx: index("idx_open_lots_asset").on(table.asset)
+  })
+);
+
+export const uncoveredDisposals = pgTable(
+  "uncovered_disposals",
+  {
+    id: bigint("id", { mode: "number" }).generatedByDefaultAsIdentity().primaryKey(),
+    asset: text("asset").notNull(),
+    qty: numeric("qty", { precision: 30, scale: 10 }).notNull(),
+    valueEur: numeric("value_eur", { precision: 30, scale: 10 }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    sourceId: text("source_id").notNull(),
+    reason: text("reason"),
+    snapshotAt: timestamp("snapshot_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    assetIdx: index("idx_uncovered_asset").on(table.asset),
+    occurredIdx: index("idx_uncovered_occurred").on(table.occurredAt)
+  })
+);
+
 export const knownSymbols = pgTable("known_symbols", {
   symbol: text("symbol").primaryKey(),
   baseAsset: text("base_asset").notNull(),

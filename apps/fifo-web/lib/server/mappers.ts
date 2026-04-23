@@ -1,4 +1,8 @@
-import type { TradeDto } from "@binance-fifo/binance-client";
+import type {
+  DepositDto,
+  TradeDto,
+  WithdrawalDto
+} from "@binance-fifo/binance-client";
 import type { KnownSymbolCandidate } from "./discover-symbols";
 
 export function mapSpotTradeDto(symbol: KnownSymbolCandidate, trade: TradeDto) {
@@ -17,4 +21,32 @@ export function mapSpotTradeDto(symbol: KnownSymbolCandidate, trade: TradeDto) {
     executedAt: new Date(trade.time),
     raw: trade
   } as const;
+}
+
+export function mapDepositDto(dto: DepositDto) {
+  return {
+    id: `DEPOSIT:${dto.id}`,
+    type: "DEPOSIT" as const,
+    asset: dto.coin,
+    amount: dto.amount,
+    fee: null,
+    occurredAt: new Date(dto.insertTime),
+    raw: dto,
+    metadata: null
+  };
+}
+
+export function mapWithdrawalDto(dto: WithdrawalDto) {
+  const applyMs = Date.parse(dto.applyTime);
+  const occurredAt = Number.isFinite(applyMs) ? new Date(applyMs) : new Date();
+  return {
+    id: `WITHDRAWAL:${dto.id}`,
+    type: "WITHDRAWAL" as const,
+    asset: dto.coin,
+    amount: dto.amount,
+    fee: null,
+    occurredAt,
+    raw: dto,
+    metadata: null
+  };
 }
